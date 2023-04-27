@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="https://d3js.org/d3.v5.js"></script>
+    <script src="./城市.js"></script>
+    <script src="https://unpkg.com/d3-v6-tip@1.0.6/build/d3-v6-tip.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+
+      text {
+        font-size: 16px;
+        font-weight: bold;
+      }
+
+      .container {
+        position: relative;
+        display: block;
+        margin: 60px auto;
+        width: 1600px;
+        height: 1600px;
+      }
+
+      .introduction,
+      .author {
+        font-size: 30px;
+      }
+
+      .author {
+        font-weight: bolder;
+      }
+
+      .title {
+        font-size: 90px;
+        font-weight: bolder;
+      }
+
+      .province:hover {
+        fill: none;
+      }
+
+      .d3-tip {
+        position: absolute;
+        top: 10px;
+        background-color: #333333c9;
+        text-align: center;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 16px;
+        color: aliceblue;
+        opacity: 0;
+      }
+
+      .d3-tip p {
+        margin: 10px;
+      }
+    </style>
+  </head>
+
+  <body></body>
+
+  <script>
+    let w = 1600;
+    let h = 1600;
+
+    let svg = d3
+      .select("body")
+      .append("div")
+      .attr("class", "container")
+      .append("svg")
+      .attr("width", w)
+      .attr("height", h);
+    // .style("background-color", "pink");
+
+    Promise.all([
+      d3.json("./中华人民共和国.json"),
+      d3.csv("./上市公司数量及市值.csv"),
+    ]).then(function (Data) {
+      // 颜色比例尺
+      let companyData = [];
+      for (let i = 0; i < Data[1].length - 1; i++) {
+        // 第一个参数为省份名,第二个参数为上市公司数量,第三个参数为上市公司市值
+        companyData[i] = Object.values(Data[1][i]);
+        companyData[i][1] = parseInt(companyData[i][1]);
+        companyData[i][2] = parseFloat(companyData[i][2]);
+      }
+      // console.log(companyData);
+      // min = d3.min(companyData, (d) => d[2]);
+      max = d3.max(companyData, (d) => d[1]);
+      let colorScale = d3.scaleLinear().domain([0, max]).range([0, 1]);
+
+      let projection = d3
+        .geoMercator()
+        .center([104.6, 33.5])
+        .scale(1470)
+        .translate([w / 2, h / 2]);
+      let path = d3.geoPath(projection);
+
+      // 标签
+      let tip = d3.select(".container").append("div").attr("class", "d3-tip");
+
+      // 地图
+      svg
+        .append("g")
+        .attr("class", "country")
+        .selectAll("g")
+        .data(Data[0].features)
+        .enter()
+        .append("g")
+        .attr("class", "province")
+        .attr("province-name", (d) => d.properties.name)
+        .append("path")
+        .each(function (d) {
+          // 计算路径中心点坐标
+          const center = path.centroid(d);
+          d3.select(this)
+            .attr("center-x", center[0])
+            .attr("center-y", center[1]);
+        })
+        .attr("d", path)
+        .attr("fill", (d) => {
+          let company = companyData.filter(
+            (e) => d.properties.name.indexOf(e[0]) != -1
+          );
+          company = company[0] ? company[0] : []; //[1];
+          // console.log(company);
+          return company[1]
+            ? d3.interpolateOrRd(colorScale(company[1]))
+            : "blue";
+        })
+        .attr("stroke", "#000000")
+        .attr("stroke-width", "2")
+        .on("mouseover", function (d) {
+          let centerX = parseInt(d3.select(this).attr("center-x"));
+          let centerY = parseInt(d3.select(this).attr("center-y"));
+          let tipData = companyData.filter(
+            (e) => d.properties.name.indexOf(e[0]) != -1
+          );
+          let str = tipData[0]
+            ? "<P>" + tipData[0][0] + "</P>" + "<P>" + tipData[0][1] + "</P>"
+            : "<P>暂无数据</P>";
+          tip.html(str);
+          tip.style("opacity", "1");
+          tip.style("top", centerY - 100 + "px");
+          tip.style("left", centerX + 80 + "px");
+          d3.select(this).attr("fill", "#fff").style("opacity", "0.6");
+        })
+        .on("mouseout", function (d) {
+          tip.style("opacity", "0");
+          d3.select(this)
+            .attr("fill", (d) => {
+              let company = companyData.filter(
+                (e) => d.properties.name.indexOf(e[0]) != -1
+              );
+              company = company[0] ? company[0] : []; //[1];
+              // console.log(company);
+              return company[1]
+                ? d3.interpolateOrRd(colorScale(company[1]))
+                : "blue";
+            })
+            .style("opacity", "1");
+        });
+
+      // 添加省会样式
+      svg
+        .append("g")
+        .attr("class", "capital-cities")
+        .selectAll("g")
+        .data(city.features)
+        .enter()
+        .append("g")
+        .attr("class", "capital-city")
+        .attr("transform", (d) => {
+          let coord = projection([
+            d.geometry.coordinates[0],
+            d.geometry.coordinates[1],
+          ]);
+          console.log(projection);
+          return "translate(" + coord[0] + "," + coord[1] + ")";
+        })
+        .append("circle")
+        .attr("r", 5)
+        .attr("stroke", "#333333")
+        .attr("fill", "rgba(255, 255, 255, 0.5)")
+
+      // 解释说明
+      svg
+        .append("text")
+        .attr("class", "title")
+        .attr("x", 100)
+        .attr("y", 160)
+        .text("中国各省份上市公司数量");
+
+      svg
+        .append("text")
+        .attr("class", "introduction")
+        .attr("x", 100)
+        .attr("y", 1400)
+        .text("数据来源：http://www.sse.com.cn/aboutus/publication/yearly/");
+
+      svg
+        .append("text")
+        .attr("class", "introduction")
+        .attr("x", 100)
+        .attr("y", 1440)
+        .attr("xml:space", "preserve")
+        .text("                    http://www.szse.cn/market/periodical/year/");
+
+      svg
+        .append("text")
+        .attr("class", "introduction")
+        .attr("x", 100)
+        .attr("y", 1480)
+        .attr("xml:space", "preserve")
+        .text("                    (港澳台数据暂缺失)");
+
+      svg
+        .append("text")
+        .attr("class", "author")
+        .attr("x", 200)
+        .attr("y", 1200)
+        .attr("xml:space", "preserve")
+        .text("@Bruce Gunn");
+    });
+  </script>
+</html>
